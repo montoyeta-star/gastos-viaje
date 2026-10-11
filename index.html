@@ -3,69 +3,81 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ViajeGasto Pro - Android</title>
+    <title>ViajeGasto Pro - Control por Viajes</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Librería OCR Tesseract.js para leer tickets -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#4f46e5">
 </head>
-<body class="bg-slate-50 text-slate-800 pb-20">
+<body class="bg-slate-50 text-slate-800 pb-24">
     <header class="bg-indigo-600 text-white shadow-md p-4 sticky top-0 z-50">
         <div class="max-w-4xl mx-auto flex justify-between items-center">
-            <h1 class="text-xl font-bold flex items-center gap-2">
+            <h1 class="text-lg font-bold flex items-center gap-2">
                 <i data-lucide="wallet"></i> ViajeGasto Pro
             </h1>
-            <span id="current-trip-badge" class="text-xs bg-indigo-700 px-3 py-1 rounded-full font-medium">Gastos de Viaje</span>
+            <button onclick="openTripModal()" class="text-xs bg-indigo-700 hover:bg-indigo-800 px-3 py-1.5 rounded-lg font-medium flex items-center gap-1 transition">
+                <i data-lucide="globe" class="w-3.5 h-3.5"></i> <span id="active-trip-name">Seleccionar Viaje</span>
+            </button>
         </div>
     </header>
 
-    <main class="max-w-4xl mx-auto p-4 space-y-6">
-        <!-- Panel de Control / Resumen -->
+    <main class="max-w-4xl mx-auto p-4 space-y-5">
+        <!-- Panel de Control / Resumen del Viaje -->
         <div class="grid grid-cols-2 gap-4">
             <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-                <p class="text-xs text-slate-500 font-medium">GASTO TOTAL</p>
+                <p class="text-xs text-slate-400 font-semibold">GASTO TOTAL</p>
                 <p id="total-spent" class="text-2xl font-bold text-indigo-600 mt-1">0.00 €</p>
             </div>
             <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-                <p class="text-xs text-slate-500 font-medium">PRESUPUESTO</p>
-                <p id="total-budget" class="text-2xl font-bold text-slate-700 mt-1">1,000.00 €</p>
+                <p class="text-xs text-slate-400 font-semibold">PRESUPUESTO</p>
+                <p id="total-budget" class="text-2xl font-bold text-slate-700 mt-1">0.00 €</p>
             </div>
         </div>
 
         <!-- Botones de Acción Rápida -->
         <div class="grid grid-cols-2 gap-3">
-            <button onclick="openAddModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white p-3 rounded-xl font-medium flex items-center justify-center gap-2 shadow-sm transition">
+            <button onclick="openAddModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white p-3.5 rounded-xl font-medium flex items-center justify-center gap-2 shadow-sm transition">
                 <i data-lucide="plus-circle"></i> Nuevo Gasto
             </button>
-            <label class="bg-emerald-600 hover:bg-emerald-700 text-white p-3 rounded-xl font-medium flex items-center justify-center gap-2 shadow-sm cursor-pointer transition">
-                <i data-lucide="camera"></i> Escanear Ticket
-                <!-- Input nativo de cámara para Android -->
-                <input type="file" accept="image/*" capture="environment" class="hidden" id="camera-input" onchange="handleCameraCapture(event)">
+            <label id="ocr-btn" class="bg-emerald-600 hover:bg-emerald-700 text-white p-3.5 rounded-xl font-medium flex items-center justify-center gap-2 shadow-sm cursor-pointer transition">
+                <i data-lucide="scan-line"></i> Escanear Ticket (OCR)
+                <input type="file" accept="image/*" capture="environment" class="hidden" onchange="processTicketOCR(event)">
             </label>
+        </div>
+
+        <!-- Indicador de Carga OCR -->
+        <div id="ocr-loading" class="hidden bg-indigo-50 border border-indigo-200 text-indigo-700 p-4 rounded-xl text-center text-sm font-medium flex items-center justify-center gap-3">
+            <svg class="animate-spin h-5 w-5 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            >
+            </svg>
+            Leyendo ticket, importe e IVA con IA...
         </div>
 
         <!-- Listado de Gastos -->
         <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
-            <div class="p-4 border-b border-slate-100 font-bold text-slate-700 flex justify-between items-center">
-                <span>Historial de Gastos</span>
+            <div class="p-4 border-b border-slate-100 font-bold text-slate-700 flex justify-between items-center text-sm">
+                <span>Gastos del Viaje Actual</span>
                 <span id="expense-count" class="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full">0 gastos</span>
             </div>
-            <div id="expense-list" class="divide-y divide-slate-100 max-h-96 overflow-y-auto">
-                <!-- Se rellena dinámicamente -->
+            <div id="expense-list" class="divide-y divide-slate-100 max-h-[50vh] overflow-y-auto">
                 <div class="p-8 text-center text-slate-400">
                     <i data-lucide="receipt" class="w-10 h-10 mx-auto mb-2 opacity-50"></i>
-                    <p>No hay gastos registrados todavía</p>
+                    <p class="text-sm">Selecciona o crea un viaje para empezar</p>
                 </div>
             </div>
         </div>
     </main>
 
-    <!-- Modal Añadir Gasto -->
+    <!-- Modal Añadir / Editar Gasto -->
     <div id="expense-modal" class="fixed inset-0 bg-black/50 hidden z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
         <div class="bg-white w-full max-w-lg rounded-t-2xl sm:rounded-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <div class="flex justify-between items-center border-b pb-3">
-                <h3 class="font-bold text-lg text-slate-800">Añadir Gasto</h3>
+                <h3 class="font-bold text-lg text-slate-800">Registrar Gasto</h3>
                 <button onclick="closeAddModal()" class="text-slate-400 hover:text-slate-600"><i data-lucide="x"></i></button>
             </div>
             <form id="expense-form" onsubmit="saveExpense(event)" class="space-y-4">
@@ -75,7 +87,7 @@
                 </div>
                 <div>
                     <label class="block text-xs font-semibold text-slate-600 mb-1">CONCEPTO</label>
-                    <input type="text" id="exp-concept" placeholder="Ej. Hotel Valencia, Carga coche..." required class="w-full p-3 border rounded-xl bg-slate-50 text-sm">
+                    <input type="text" id="exp-concept" placeholder="Ej. Hotel Valencia, Restaurante..." required class="w-full p-3 border rounded-xl bg-slate-50 text-sm">
                 </div>
                 <div class="grid grid-cols-2 gap-3">
                     <div>
@@ -91,12 +103,16 @@
                         </select>
                     </div>
                     <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">IMPORTE (€)</label>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">IMPORTE TOTAL (€)</label>
                         <input type="number" step="0.01" id="exp-amount" placeholder="0.00" required class="w-full p-3 border rounded-xl bg-slate-50 text-sm">
                     </div>
                 </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">IVA INCLUIDO (€) <span class="text-slate-400 font-normal">(Opcional / Detectado OCR)</span></label>
+                    <input type="number" step="0.01" id="exp-vat" placeholder="0.00" class="w-full p-3 border rounded-xl bg-slate-50 text-sm">
+                </div>
                 <div id="receipt-preview-container" class="hidden">
-                    <p class="text-xs font-semibold text-slate-600 mb-1">TICKET ESCANEADO</p>
+                    <p class="text-xs font-semibold text-slate-600 mb-1">TICKET ADJUNTADO</p>
                     <img id="receipt-img-preview" src="" class="w-full h-32 object-cover rounded-xl border">
                 </div>
                 <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium p-3.5 rounded-xl shadow transition">
@@ -106,15 +122,128 @@
         </div>
     </div>
 
+    <!-- Modal Gestión de Viajes -->
+    <div id="trip-modal" class="fixed inset-0 bg-black/50 hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-md rounded-2xl p-6 space-y-4 shadow-xl">
+            <div class="flex justify-between items-center border-b pb-3">
+                <h3 class="font-bold text-lg text-slate-800">Tus Viajes</h3>
+                <button onclick="closeTripModal()" class="text-slate-400 hover:text-slate-600"><i data-lucide="x"></i></button>
+            </div>
+            <div id="trip-list" class="space-y-2 max-h-48 overflow-y-auto">
+                <!-- Listado de viajes -->
+            </div>
+            <div class="border-t pt-4 space-y-3">
+                <h4 class="font-semibold text-xs text-slate-600">CREAR NUEVO VIAJE</h4>
+                <input type="text" id="new-trip-name" placeholder="Nombre del viaje (ej. Ruta Norte)" class="w-full p-3 border rounded-xl text-sm bg-slate-50">
+                <input type="number" id="new-trip-budget" placeholder="Presupuesto total (€)" class="w-full p-3 border rounded-xl text-sm bg-slate-50">
+                <button onclick="createNewTrip()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white p-3 rounded-xl font-medium text-sm transition">
+                    Crear y Seleccionar Viaje
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script>
+        let trips = JSON.parse(localStorage.getItem('travel_trips') || '[]');
+        let currentTripId = localStorage.getItem('travel_current_trip') || null;
         let expenses = JSON.parse(localStorage.getItem('travel_expenses') || '[]');
         let currentReceiptBase64 = '';
 
         document.addEventListener('DOMContentLoaded', () => {
             lucide.createIcons();
-            document.getElementById('exp-date').valueAsDate = new Date();
+            if (trips.length === 0) {
+                // Crear un viaje por defecto si no existe ninguno
+                const defaultTrip = { id: Date.now(), name: 'Viaje Principal', budget: 1000 };
+                trips.push(defaultTrip);
+                currentTripId = defaultTrip.id;
+                saveData();
+            } else if (!currentTripId || !trips.some(t => t.id == currentTripId)) {
+                currentTripId = trips[0].id;
+            }
+            updateTripUI();
             renderExpenses();
         });
+
+        function saveData() {
+            localStorage.setItem('travel_trips', JSON.stringify(trips));
+            localStorage.setItem('travel_current_trip', currentTripId);
+            localStorage.setItem('travel_expenses', JSON.stringify(expenses));
+        }
+
+        function openTripModal() {
+            renderTripList();
+            document.getElementById('trip-modal').classList.remove('hidden');
+        }
+
+        function closeTripModal() {
+            document.getElementById('trip-modal').classList.add('hidden');
+        }
+
+        function renderTripList() {
+            const container = document.getElementById('trip-list');
+            container.innerHTML = trips.map(t => `
+                <div class="flex items-center justify-between p-3 rounded-xl border ${t.id == currentTripId ? 'border-indigo-600 bg-indigo-50/50' : 'border-slate-100'}">
+                    <div>
+                        <p class="font-semibold text-sm text-slate-800">${t.name}</p>
+                        <p class="text-xs text-slate-400">Presupuesto: ${t.budget} €</p>
+                    </div>
+                    <div class="flex gap-2">
+                        ${t.id != currentTripId ? `<button onclick="selectTrip(${t.id})" class="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg font-medium">Seleccionar</button>` : `<span class="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg font-medium">Activo</span>`}
+                        <button onclick="deleteTrip(${t.id})" class="text-slate-400 hover:text-red-500 p-1.5"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                    </div>
+                </div>
+            `).join('');
+            lucide.createIcons();
+        }
+
+        function createNewTrip() {
+            const name = document.getElementById('new-trip-name').value.trim();
+            const budget = parseFloat(document.getElementById('new-trip-budget').value) || 0;
+            if (!name) {
+                alert('Introduce un nombre para el viaje.');
+                return;
+            }
+            const newTrip = { id: Date.now(), name, budget };
+            trips.push(newTrip);
+            currentTripId = newTrip.id;
+            saveData();
+            document.getElementById('new-trip-name').value = '';
+            document.getElementById('new-trip-budget').value = '';
+            closeTripModal();
+            updateTripUI();
+            renderExpenses();
+        }
+
+        function selectTrip(id) {
+            currentTripId = id;
+            saveData();
+            closeTripModal();
+            updateTripUI();
+            renderExpenses();
+        }
+
+        function deleteTrip(id) {
+            if (trips.length <= 1) {
+                alert('Debes mantener al menos un viaje.');
+                return;
+            }
+            if (confirm('¿Eliminar este viaje y todos sus gastos asociados?')) {
+                trips = trips.filter(t => t.id != id);
+                expenses = expenses.filter(e => e.tripId != id);
+                currentTripId = trips[0].id;
+                saveData();
+                updateTripUI();
+                renderExpenses();
+            }
+        }
+
+        function updateTripUI() {
+            const current = trips.find(t => t.id == currentTripId);
+            if (current) {
+                document.getElementById('active-trip-name').textContent = current.name;
+                document.getElementById('total-budget').textContent = current.budget.toFixed(2) + ' €';
+            }
+        }
 
         function openAddModal() {
             document.getElementById('expense-modal').classList.remove('hidden');
@@ -128,17 +257,60 @@
             currentReceiptBase64 = '';
         }
 
-        function handleCameraCapture(event) {
+        // Motor OCR con Tesseract.js
+        async function processTicketOCR(event) {
             const file = event.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    currentReceiptBase64 = e.target.result;
-                    document.getElementById('receipt-img-preview').src = currentReceiptBase64;
-                    document.getElementById('receipt-preview-container').classList.remove('hidden');
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async function(e) {
+                currentReceiptBase64 = e.target.result;
+                document.getElementById('receipt-img-preview').src = currentReceiptBase64;
+                document.getElementById('receipt-preview-container').classList.remove('hidden');
+                
+                // Mostrar indicador de carga OCR
+                document.getElementById('ocr-loading').classList.remove('hidden');
+                
+                try {
+                    // Reconocimiento óptico en español
+                    const result = await Tesseract.recognize(file, 'spa');
+                    const text = result.data.text;
+                    
+                    parseTicketText(text);
+                } catch (err) {
+                    console.error('Error OCR:', err);
+                    alert('No se pudo leer automáticamente el ticket, pero la foto se ha guardado. Rellena los datos manualmente.');
+                } finally {
+                    document.getElementById('ocr-loading').classList.add('hidden');
                     openAddModal();
-                };
-                reader.readAsDataURL(file);
+                }
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Extractor inteligente de Importe, IVA y Concepto
+        function parseTicketText(text) {
+            const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+            
+            // 1. Concepto (intentar coger la primera línea con texto comercial válido)
+            if (lines.length > 0) {
+                document.getElementById('exp-concept').value = lines[0].substring(0, 35);
+            }
+
+            // 2. Buscar importes totales e IVA usando expresiones regulares en todo el texto
+            const numbers = text.match(/\b\d+[\.,]\d{2}\b/g);
+            if (numbers && numbers.length > 0) {
+                // Limpiar y convertir a números flotantes
+                const cleanNums = numbers.map(n => parseFloat(n.replace(',', '.')));
+                // El total suele ser el número mayor del ticket
+                const maxNum = Math.max(...cleanNums);
+                document.getElementById('exp-amount').value = maxNum.toFixed(2);
+            }
+
+            // Buscar palabra clave de IVA o importe con decimales cercanos a IVA
+            const ivaMatch = text.match(/(?:iva|impuesto)[\s\w]*?(\d+[\.,]\d{2})/i);
+            if (ivaMatch && ivaMatch[1]) {
+                document.getElementById('exp-vat').value = parseFloat(ivaMatch[1].replace(',', '.')).toFixed(2);
             }
         }
 
@@ -146,14 +318,16 @@
             e.preventDefault();
             const newExp = {
                 id: Date.now(),
+                tripId: currentTripId,
                 date: document.getElementById('exp-date').value,
                 concept: document.getElementById('exp-concept').value,
                 category: document.getElementById('exp-category').value,
-                amount: parseFloat(document.getElementById('exp-amount').value),
+                amount: parseFloat(document.getElementById('exp-amount').value) || 0,
+                vat: parseFloat(document.getElementById('exp-vat').value) || 0,
                 receipt: currentReceiptBase64
             };
             expenses.unshift(newExp);
-            localStorage.setItem('travel_expenses', JSON.stringify(expenses));
+            saveData();
             closeAddModal();
             renderExpenses();
         }
@@ -161,7 +335,7 @@
         function deleteExpense(id) {
             if (confirm('¿Seguro que deseas eliminar este gasto?')) {
                 expenses = expenses.filter(exp => exp.id !== id);
-                localStorage.setItem('travel_expenses', JSON.stringify(expenses));
+                saveData();
                 renderExpenses();
             }
         }
@@ -171,33 +345,38 @@
             const totalElem = document.getElementById('total-spent');
             const countElem = document.getElementById('expense-count');
 
-            let total = expenses.reduce((sum, item) => sum + item.amount, 0);
-            totalElem.textContent = total.toFixed(2) + ' €';
-            countElem.textContent = expenses.length + (expenses.length === 1 ? ' gasto' : ' gastos');
+            // Filtrar gastos del viaje actual
+            const currentTripExpenses = expenses.filter(exp => exp.tripId == currentTripId);
 
-            if (expenses.length === 0) {
+            let total = currentTripExpenses.reduce((sum, item) => sum + item.amount, 0);
+            totalElem.textContent = total.toFixed(2) + ' €';
+            countElem.textContent = currentTripExpenses.length + (currentTripExpenses.length === 1 ? ' gasto' : ' gastos');
+
+            if (currentTripExpenses.length === 0) {
                 list.innerHTML = `
                     <div class="p-8 text-center text-slate-400">
                         <i data-lucide="receipt" class="w-10 h-10 mx-auto mb-2 opacity-50"></i>
-                        <p>No hay gastos registrados todavía</p>
+                        <p class="text-sm">No hay gastos registrados en este viaje</p>
                     </div>`;
                 lucide.createIcons();
                 return;
             }
 
-            list.innerHTML = expenses.map(exp => `
+            list.innerHTML = currentTripExpenses.map(exp => `
                 <div class="p-4 flex items-center justify-between hover:bg-slate-50 transition">
                     <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-sm shrink-0">
+                        <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs shrink-0">
                             ${exp.category.substring(0,2).toUpperCase()}
                         </div>
                         <div>
                             <h4 class="font-semibold text-slate-800 text-sm">${exp.concept}</h4>
-                            <p class="text-xs text-slate-400">${exp.date} • <span class="text-indigo-600 font-medium">${exp.category}</span></p>
+                            <p class="text-xs text-slate-400">${exp.date} • <span class="text-indigo-600 font-medium">${exp.category}</span> ${exp.vat > 0 ? `• IVA: ${exp.vat.toFixed(2)}€` : ''}</p>
                         </div>
                     </div>
                     <div class="flex items-center gap-3">
-                        <span class="font-bold text-slate-800 text-sm">${exp.amount.toFixed(2)} €</span>
+                        <div class="text-right">
+                            <span class="font-bold text-slate-800 text-sm block">${exp.amount.toFixed(2)} €</span>
+                        </div>
                         <button onclick="deleteExpense(${exp.id})" class="text-slate-300 hover:text-red-500 p-2 transition">
                             <i data-lucide="trash-2" class="w-4 h-4"></i>
                         </button>
