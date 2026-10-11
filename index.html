@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ViajeGasto Pro - Android</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#4f46e5">
+</head>
+<body class="bg-slate-50 text-slate-800 pb-20">
+    <header class="bg-indigo-600 text-white shadow-md p-4 sticky top-0 z-50">
+        <div class="max-w-4xl mx-auto flex justify-between items-center">
+            <h1 class="text-xl font-bold flex items-center gap-2">
+                <i data-lucide="wallet"></i> ViajeGasto Pro
+            </h1>
+            <span id="current-trip-badge" class="text-xs bg-indigo-700 px-3 py-1 rounded-full font-medium">Gastos de Viaje</span>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto p-4 space-y-6">
+        <!-- Panel de Control / Resumen -->
+        <div class="grid grid-cols-2 gap-4">
+            <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                <p class="text-xs text-slate-500 font-medium">GASTO TOTAL</p>
+                <p id="total-spent" class="text-2xl font-bold text-indigo-600 mt-1">0.00 €</p>
+            </div>
+            <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                <p class="text-xs text-slate-500 font-medium">PRESUPUESTO</p>
+                <p id="total-budget" class="text-2xl font-bold text-slate-700 mt-1">1,000.00 €</p>
+            </div>
+        </div>
+
+        <!-- Botones de Acción Rápida -->
+        <div class="grid grid-cols-2 gap-3">
+            <button onclick="openAddModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white p-3 rounded-xl font-medium flex items-center justify-center gap-2 shadow-sm transition">
+                <i data-lucide="plus-circle"></i> Nuevo Gasto
+            </button>
+            <label class="bg-emerald-600 hover:bg-emerald-700 text-white p-3 rounded-xl font-medium flex items-center justify-center gap-2 shadow-sm cursor-pointer transition">
+                <i data-lucide="camera"></i> Escanear Ticket
+                <!-- Input nativo de cámara para Android -->
+                <input type="file" accept="image/*" capture="environment" class="hidden" id="camera-input" onchange="handleCameraCapture(event)">
+            </label>
+        </div>
+
+        <!-- Listado de Gastos -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+            <div class="p-4 border-b border-slate-100 font-bold text-slate-700 flex justify-between items-center">
+                <span>Historial de Gastos</span>
+                <span id="expense-count" class="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full">0 gastos</span>
+            </div>
+            <div id="expense-list" class="divide-y divide-slate-100 max-h-96 overflow-y-auto">
+                <!-- Se rellena dinámicamente -->
+                <div class="p-8 text-center text-slate-400">
+                    <i data-lucide="receipt" class="w-10 h-10 mx-auto mb-2 opacity-50"></i>
+                    <p>No hay gastos registrados todavía</p>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Modal Añadir Gasto -->
+    <div id="expense-modal" class="fixed inset-0 bg-black/50 hidden z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+        <div class="bg-white w-full max-w-lg rounded-t-2xl sm:rounded-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b pb-3">
+                <h3 class="font-bold text-lg text-slate-800">Añadir Gasto</h3>
+                <button onclick="closeAddModal()" class="text-slate-400 hover:text-slate-600"><i data-lucide="x"></i></button>
+            </div>
+            <form id="expense-form" onsubmit="saveExpense(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">FECHA</label>
+                    <input type="date" id="exp-date" required class="w-full p-3 border rounded-xl bg-slate-50 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">CONCEPTO</label>
+                    <input type="text" id="exp-concept" placeholder="Ej. Hotel Valencia, Carga coche..." required class="w-full p-3 border rounded-xl bg-slate-50 text-sm">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">TIPO DE GASTO</label>
+                        <select id="exp-category" class="w-full p-3 border rounded-xl bg-slate-50 text-sm">
+                            <option value="Hotel">Hotel</option>
+                            <option value="Restaurante">Restaurante</option>
+                            <option value="Supermercado">Supermercado</option>
+                            <option value="Museo">Museo</option>
+                            <option value="Bar / Cafetería">Bar / Cafetería</option>
+                            <option value="Coche Eléctrico">Carga Coche Eléctrico</option>
+                            <option value="Otros">Otros</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">IMPORTE (€)</label>
+                        <input type="number" step="0.01" id="exp-amount" placeholder="0.00" required class="w-full p-3 border rounded-xl bg-slate-50 text-sm">
+                    </div>
+                </div>
+                <div id="receipt-preview-container" class="hidden">
+                    <p class="text-xs font-semibold text-slate-600 mb-1">TICKET ESCANEADO</p>
+                    <img id="receipt-img-preview" src="" class="w-full h-32 object-cover rounded-xl border">
+                </div>
+                <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium p-3.5 rounded-xl shadow transition">
+                    Guardar Gasto
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        let expenses = JSON.parse(localStorage.getItem('travel_expenses') || '[]');
+        let currentReceiptBase64 = '';
+
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            document.getElementById('exp-date').valueAsDate = new Date();
+            renderExpenses();
+        });
+
+        function openAddModal() {
+            document.getElementById('expense-modal').classList.remove('hidden');
+        }
+
+        function closeAddModal() {
+            document.getElementById('expense-modal').classList.add('hidden');
+            document.getElementById('expense-form').reset();
+            document.getElementById('exp-date').valueAsDate = new Date();
+            document.getElementById('receipt-preview-container').classList.add('hidden');
+            currentReceiptBase64 = '';
+        }
+
+        function handleCameraCapture(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    currentReceiptBase64 = e.target.result;
+                    document.getElementById('receipt-img-preview').src = currentReceiptBase64;
+                    document.getElementById('receipt-preview-container').classList.remove('hidden');
+                    openAddModal();
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function saveExpense(e) {
+            e.preventDefault();
+            const newExp = {
+                id: Date.now(),
+                date: document.getElementById('exp-date').value,
+                concept: document.getElementById('exp-concept').value,
+                category: document.getElementById('exp-category').value,
+                amount: parseFloat(document.getElementById('exp-amount').value),
+                receipt: currentReceiptBase64
+            };
+            expenses.unshift(newExp);
+            localStorage.setItem('travel_expenses', JSON.stringify(expenses));
+            closeAddModal();
+            renderExpenses();
+        }
+
+        function deleteExpense(id) {
+            if (confirm('¿Seguro que deseas eliminar este gasto?')) {
+                expenses = expenses.filter(exp => exp.id !== id);
+                localStorage.setItem('travel_expenses', JSON.stringify(expenses));
+                renderExpenses();
+            }
+        }
+
+        function renderExpenses() {
+            const list = document.getElementById('expense-list');
+            const totalElem = document.getElementById('total-spent');
+            const countElem = document.getElementById('expense-count');
+
+            let total = expenses.reduce((sum, item) => sum + item.amount, 0);
+            totalElem.textContent = total.toFixed(2) + ' €';
+            countElem.textContent = expenses.length + (expenses.length === 1 ? ' gasto' : ' gastos');
+
+            if (expenses.length === 0) {
+                list.innerHTML = `
+                    <div class="p-8 text-center text-slate-400">
+                        <i data-lucide="receipt" class="w-10 h-10 mx-auto mb-2 opacity-50"></i>
+                        <p>No hay gastos registrados todavía</p>
+                    </div>`;
+                lucide.createIcons();
+                return;
+            }
+
+            list.innerHTML = expenses.map(exp => `
+                <div class="p-4 flex items-center justify-between hover:bg-slate-50 transition">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-sm shrink-0">
+                            ${exp.category.substring(0,2).toUpperCase()}
+                        </div>
+                        <div>
+                            <h4 class="font-semibold text-slate-800 text-sm">${exp.concept}</h4>
+                            <p class="text-xs text-slate-400">${exp.date} • <span class="text-indigo-600 font-medium">${exp.category}</span></p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="font-bold text-slate-800 text-sm">${exp.amount.toFixed(2)} €</span>
+                        <button onclick="deleteExpense(${exp.id})" class="text-slate-300 hover:text-red-500 p-2 transition">
+                            <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+            lucide.createIcons();
+        }
+    </script>
+</body>
+</html>
